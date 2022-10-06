@@ -1,0 +1,207 @@
+---
+title: "Linear Regression"
+author: "Piyush Kumar"
+date: "2022-05-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Loading the required libraries:**
+```{r}
+library(tidyverse)
+library(gridExtra)
+library(reshape)
+library(ggcorrplot)
+library(caret)
+library(car)
+library(lmtest)
+```
+
+
+**Reading data:**
+```{r}
+house_data = read.csv("USA_housing.csv")
+head(house_data)
+
+house = house_data[-7]
+```
+
+# EDA:
+```{r}
+# Checking Distribution of Response Variable
+
+ggplot(house, aes(Price)) +
+  geom_histogram(aes(y = ..density..), fill="skyblue") +
+  geom_density() 
+
+```
+
+
+Histogram displays an almost normal curve of the response variable. Hence we can say that Price of the house is somewhat normally distributed.
+
+
+```{r}
+# Analyzing the Statistics of the variables
+summary(house)
+```
+
+
+Looking at the summary statistics, one can easily observe that variables have means and medians very close to each other and that too lies somewhere to the middle of the range. 
+
+
+```{r}
+# Plotting all the variables to see the distribution
+
+g_Income= ggplot(house, aes(Avg..Area.Income)) +
+  geom_histogram(aes(y = ..density..), fill="skyblue") 
+
+g_H_Age= ggplot(house, aes(Avg..Area.House.Age)) +
+  geom_histogram(aes(y = ..density..), fill="skyblue") 
+
+g_H_Rooms= ggplot(house, aes(Avg..Area.Number.of.Rooms)) +
+  geom_histogram(aes(y = ..density..), fill="skyblue") 
+
+g_H_BRooms= ggplot(house, aes(Avg..Area.Number.of.Bedrooms)) +
+  geom_histogram(aes(y = ..density..),bins = 6, fill="skyblue") 
+
+g_Pop= ggplot(house, aes(Area.Population)) +
+  geom_histogram(aes(y = ..density..), fill="skyblue") 
+
+grid.arrange(g_Income, g_H_Age, g_H_Rooms, g_H_BRooms, g_H_Age, ncol=3)
+
+```
+
+
+```{r}
+# Plotting Boxplots to identify the outliers (if any)
+
+melt(house) %>% ggplot(aes(factor(variable), value)) +
+                geom_boxplot() +
+                facet_wrap(~variable, scale="free")
+```
+
+
+All the variables seems to have potential outliers except "Number of Beds".
+
+```{r}
+# Visualizing the Correlation Matrix  to see relationship among variables
+corr = cor(house)
+house.mat = cor_pmat(house)
+
+ggcorrplot(corr, hc.order = TRUE, type = "lower", lab = TRUE)
+
+```
+
+From the above visualization, it is very clear that all the explanatory variables (i.e., all variables except price) are very weakly related amongst each other. Only, correlation is observed between "No. of Bedrooms" and "No. of Rooms" which was expected.
+Also, all the explanatory variables have positive correlation and thus are correlated positively to the explained variable (i.e., Price).
+
+# Training Regression Model
+
+## Dividing the data into train and test subsets
+
+```{r}
+# The housing data is divided into 70:30 split of train and test. The 70:30 split is the most common and is mostly used during the training phase. 70% of the data is used for training, and the rest 30% is for testing how good we were able to learn the data behavior
+
+index = unlist(createDataPartition(house$Price, p=0.70))
+train = house[index,]
+test = house[-index,]
+```
+
+## Building Model
+```{r}
+linear_model1 = lm( Price ~ ., data= train)
+print(linear_model1)
+```
+
+## Applying Tests and checking the validity of the model
+```{r}
+summary(linear_model1)
+```
+
+
+From the above summary table, it is very relevant that except "Avg..Area.Number.of.Bedrooms"  all explanatory variables are highly significant even at very small level of significance. 
+So, we can consider dropping the "Avg..Area.Number.of.Bedrooms" variables as it has good correlation with "Avg..Area.Number.of.Rooms" and comparatively less correlation with dependent variable (i.e., Price ).Also, the "Avg..Area.Number.of.Rooms" will account for the dropped variable as they must be related in general scenario.
+
+Looking at the overall model adequacy, we have high (i.e., 0.8983) "Coefficient of Determination" (or R-squared value). 
+In other words, saying that R-squared value is 0.8984 means all the five explanatory variables are able to explain 89.84% of the variability in the explained variable (i.e., Price)
+
+Also, p-value corresponding to F-test for significance of overall model is almost zero which further rejects the null  hypothesis (which we define as Ho : The Model is not significant).
+
+
+## Fitting the model by dropping the "Avg..Area.Number.of.BedRooms" variable
+```{r}
+linear_model2 = lm( Price ~ . , data= train[-4])
+print(linear_model2)
+```
+
+## Applying Tests and checking the validity of the model
+```{r}
+summary(linear_model2)
+```
+
+
+Since, there is no difference between model1 and model2 in terms of R-squared and adjusted R-squared value, hence we can rely on model2 for prediction purpose. Both the models are highly significant.
+
+Considering model2 and by all the above observations, we can say that our model is a good fit. We can proceed to further test our model.
+
+# Checking the assumption of Linear Models
+
+## 1) Normality of Random Errors
+
+```{r}
+hist(linear_model2$residuals)
+```
+
+
+The plotted histogram tells that the error variance follows normal distribution as it gives a bell-shaped curve. So, our first assumption holds.
+We can further consolidate our stated statement by plotting some graphs as follows and examining the independence of error terms:
+
+```{r}
+plot(linear_model2)
+```
+
+## 2) Assumption of Homoscedasticity
+This can confirmed by the above "residual vs Fitted" plot. One can easily observe that points are randomly distributed along the "zero residual line" and there's no pattern or trend there. Thus, our model doesn't seems to violate the assumption of homoscedasticity.
+
+## 3) Assumption of no Multicollinearity
+This can be done with the use of Variance Inflation Factor. Also, in the scatter-plot visualization, we have seen that none of the variables have strong correlation with each other.
+
+```{r}
+# Calculating VIF for each variable to test the presence of multicollinearity in the model
+
+car :: vif(linear_model2)
+```
+
+All the variables have very low VIF and thus multicollinearity is not suspected.
+
+## 4) Assumption of no AutoCorrelation
+
+```{r}
+# Durbin-Watson Test can be used to detect autocorrelation
+dwtest(linear_model2)
+```
+
+The DW statistic is very close to 2 which shows that there is no autocorrelation in our fitted model.
+
+# Running the model on the Test Dataset
+```{r}
+test$Predicted_Price= predict(linear_model2,test)
+head(test[-c(1:5)])
+```
+
+
+```{r}
+actual= test$Price
+preds= test$Predicted_Price
+rss= sum((preds - actual) ^ 2)
+tss= sum((actual - mean(actual)) ^ 2)
+rsq= 1 - (rss/tss)
+rsq
+```
+Hence, our model is performing well.
+
+
+
